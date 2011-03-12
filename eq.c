@@ -73,6 +73,9 @@ int main(int argc, char *argv[]) {
 	sound.dlen = cvt.len_cvt;
 	sound.dpos = 0;
 	SDL_UnlockAudio();
+	while (sound.dpos < sound.dlen) {
+		SDL_Delay(100);
+	}
 	SDL_CloseAudio();
 	SDL_Quit();
 	return EXIT_SUCCESS;
