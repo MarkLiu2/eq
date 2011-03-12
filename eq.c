@@ -1,29 +1,79 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <SDL.h>
-#include <SDL_mixer.h>
 
-int main() {
+struct sample {
+	Uint8 *data;
+	Uint32 dpos;
+	Uint32 dlen;
+} sound;
+
+void play(void *udata, Uint8 *stream, int len) {
+	Uint32 amount = sound.dlen - sound.dpos;
+	if (amount > (unsigned int) len) {
+		amount = len;
+	}
+	SDL_MixAudio(stream, &sound.data[sound.dpos], amount, SDL_MIX_MAXVOLUME);
+	sound.dpos += amount;
+}
+
+int main(int argc, char *argv[]) {
+	if (argc < 2) {
+		fprintf(stderr, "!\n");
+		return(EXIT_FAILURE);
+	}
 	if (SDL_Init(SDL_INIT_AUDIO)) {
 		fprintf(stderr, "%s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
 	}
-	if (Mix_OpenAudio(44100, AUDIO_S16, 2, 4096)) {
+	SDL_AudioSpec desired;
+	desired.freq = 44100;
+	desired.format = AUDIO_S16SYS;
+	desired.channels = 1;
+	desired.samples = 512;
+	desired.callback = play;
+	if (SDL_OpenAudio(&desired, NULL)) {
 		fprintf(stderr, "%s\n", SDL_GetError());
+		SDL_Quit();
 		exit(EXIT_FAILURE);
 	}
-	Mix_Chunk *sound = NULL;
-	sound = Mix_LoadWAV("test.wav");
-	if (sound == NULL) {
-		fprintf(stderr, "%s\n", Mix_GetError());
+	SDL_PauseAudio(0);
+	SDL_AudioSpec wave;
+	Uint8 *data;
+	Uint32 dlen;
+	if (SDL_LoadWAV(argv[1], &wave, &data, &dlen) == NULL ) {
+		fprintf(stderr, "%s\n", SDL_GetError());
+		SDL_CloseAudio();
+		SDL_Quit();
+		exit(EXIT_FAILURE);
 	}
-	int channel = Mix_PlayChannel(-1, sound, 0);
-	if (channel == -1) {
-		fprintf(stderr, "Unable to play WAV file: %s\n", Mix_GetError());
+	SDL_AudioCVT cvt;
+	if (SDL_BuildAudioCVT(&cvt, wave.format, wave.channels, wave.freq, desired.format, desired.channels, desired.freq) < 0) {
+		fprintf(stderr, "%s\n", SDL_GetError());
+		SDL_CloseAudio();
+		SDL_Quit();
+		exit(EXIT_FAILURE);
 	}
-	while (Mix_Playing(channel) != 0);
-	Mix_FreeChunk(sound);
-	Mix_CloseAudio();
+	cvt.buf = malloc(dlen * cvt.len_mult);
+	memcpy(cvt.buf, data, dlen);
+	cvt.len = dlen;
+	if (SDL_ConvertAudio(&cvt)) {
+		fprintf(stderr, "%s\n", SDL_GetError());
+		SDL_FreeWAV(data);
+		SDL_CloseAudio();
+		SDL_Quit();
+		exit(EXIT_FAILURE);
+	}
+	SDL_FreeWAV(data);
+	if (sound.data) {
+		free(sound.data);
+	}
+	SDL_LockAudio();
+	sound.data = cvt.buf;
+	sound.dlen = cvt.len_cvt;
+	sound.dpos = 0;
+	SDL_UnlockAudio();
+	SDL_CloseAudio();
 	SDL_Quit();
 	return EXIT_SUCCESS;
 }
