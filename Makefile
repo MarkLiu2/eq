@@ -3,7 +3,7 @@ PROJ=eq
 CC=gcc
 RM=rm -f
 CFLAGS=-O2 -pipe -pedantic-errors -Wall -Wextra -march=native -fomit-frame-pointer -std=c99
-SDL=`sdl-config --cflags --libs` -lSDL_mixer
+SDL=`sdl-config --cflags --libs`
 
 all: $(PROJ)
 
