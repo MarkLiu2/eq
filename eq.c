@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <SDL.h>
 
+#include "eq.h"
+
 struct sample {
 	Uint8 *data;
 	Uint32 dpos;
@@ -17,21 +19,25 @@ void play(void *udata, Uint8 *stream, int len) {
 	sound.dpos += amount;
 }
 
-int main(int argc, char *argv[]) {
-	if (argc < 2) {
-		fprintf(stderr, "!\n");
-		return(EXIT_FAILURE);
-	}
+void play_wavfile (char * file)
+{
+
+    if (file == NULL)
+        return;
+
+
 	if (SDL_Init(SDL_INIT_AUDIO)) {
 		fprintf(stderr, "%s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
 	}
+
 	SDL_AudioSpec desired;
 	desired.freq = 44100;
 	desired.format = AUDIO_S16SYS;
 	desired.channels = 1;
 	desired.samples = 512;
 	desired.callback = play;
+
 	if (SDL_OpenAudio(&desired, NULL)) {
 		fprintf(stderr, "%s\n", SDL_GetError());
 		SDL_Quit();
@@ -41,12 +47,13 @@ int main(int argc, char *argv[]) {
 	SDL_AudioSpec wave;
 	Uint8 *data;
 	Uint32 dlen;
-	if (SDL_LoadWAV(argv[1], &wave, &data, &dlen) == NULL ) {
+	if (SDL_LoadWAV(file, &wave, &data, &dlen) == NULL ) {
 		fprintf(stderr, "%s\n", SDL_GetError());
 		SDL_CloseAudio();
 		SDL_Quit();
 		exit(EXIT_FAILURE);
 	}
+
 	SDL_AudioCVT cvt;
 	if (SDL_BuildAudioCVT(&cvt, wave.format, wave.channels, wave.freq, desired.format, desired.channels, desired.freq) < 0) {
 		fprintf(stderr, "%s\n", SDL_GetError());
@@ -78,5 +85,4 @@ int main(int argc, char *argv[]) {
 	}
 	SDL_CloseAudio();
 	SDL_Quit();
-	return EXIT_SUCCESS;
 }
