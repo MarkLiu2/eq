@@ -2,7 +2,7 @@ PROJ=eq
 
 CC=gcc
 RM=rm -f
-CFLAGS=-O2 -pipe -pedantic-errors -Wall -Wextra -march=native -fomit-frame-pointer -std=c99 
+CFLAGS=-O2 -pipe -pedantic-errors -Wall -Wextra -march=native -fomit-frame-pointer -std=c99
 GTK=`pkg-config gtk+-2.0 --cflags --libs`
 SDL=`sdl-config --cflags --libs`
 
@@ -15,9 +15,7 @@ all: $(PROJ)
 %.o: %.c
 	$(CC) $(CFLAGS) $(SDL) -c $<
 
-eq.o: eq.c eq.h
-
-$(PROJ): $(OBJS) gui.c 
+$(PROJ): $(OBJS) gui.c
 	$(CC) $(CFLAGS) $(OBJS) $(SDL) $(GTK) gui.c -o $(PROJ)
 
 clean:

@@ -19,25 +19,20 @@ void play(void *udata, Uint8 *stream, int len) {
 	sound.dpos += amount;
 }
 
-void play_wavfile (char * file)
-{
-
-    if (file == NULL)
-        return;
-
-
+void play_wavfile(char* file) {
+	if (!file) {
+		return;
+	}
 	if (SDL_Init(SDL_INIT_AUDIO)) {
 		fprintf(stderr, "%s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
 	}
-
 	SDL_AudioSpec desired;
 	desired.freq = 44100;
 	desired.format = AUDIO_S16SYS;
 	desired.channels = 1;
 	desired.samples = 512;
 	desired.callback = play;
-
 	if (SDL_OpenAudio(&desired, NULL)) {
 		fprintf(stderr, "%s\n", SDL_GetError());
 		SDL_Quit();
@@ -53,7 +48,6 @@ void play_wavfile (char * file)
 		SDL_Quit();
 		exit(EXIT_FAILURE);
 	}
-
 	SDL_AudioCVT cvt;
 	if (SDL_BuildAudioCVT(&cvt, wave.format, wave.channels, wave.freq, desired.format, desired.channels, desired.freq) < 0) {
 		fprintf(stderr, "%s\n", SDL_GetError());
