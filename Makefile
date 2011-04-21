@@ -13,7 +13,7 @@ all: $(PROJ)
 .PHONY: clean
 
 %.o: %.c
-	$(CC) $(CFLAGS) $(SDL) -c $<
+	$(CC) $(CFLAGS) $(SDL) $(GTK) -c $<
 
 $(PROJ): $(OBJS) gui.c
 	$(CC) $(CFLAGS) $(OBJS) $(SDL) $(GTK) gui.c -o $(PROJ)
