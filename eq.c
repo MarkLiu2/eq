@@ -32,7 +32,36 @@ void get_wavparams (char* file, TPlayer *p)
         exit(EXIT_FAILURE);
     }
 
-    p->freq = g_strdup_printf("Frequency: %l", wave.freq);
+    if(p->freq != NULL)
+        g_free(p->freq);
+
+    if(p->channels != NULL)
+        g_free(p->channels);
+
+
+    p->freq = g_strdup_printf("%d", wave.freq);
+    switch(wave.channels) //1 mono, 2 stereo, 4 surround, 6 surround with center and lfe
+    {
+        case 1:
+            p->channels = g_strdup_printf("%d - mono", wave.channels);
+            break;
+
+        case 2:
+            p->channels = g_strdup_printf("%d - stereo", wave.channels);
+            break;
+
+        case 4:
+            p->channels = g_strdup_printf("%d - surround", wave.channels);
+            break;
+
+        case 6:
+            p->channels = g_strdup_printf("%d - surround with center and lfe", wave.channels);
+            break;
+
+        default:
+            p->channels = g_strdup_printf("%d - undefined", wave.channels);
+            break;
+    }
 
     SDL_FreeWAV(data);
 
@@ -143,6 +172,11 @@ void play_wavfile(char* file, TPlayer *p)
         else
             SDL_PauseAudio(0);
     }
+
+
+    //Neprehravam takze FALSE
+    p->PLAY = FALSE;
+    p->PAUSE = FALSE;
 
     SDL_CloseAudio();
     SDL_Quit();

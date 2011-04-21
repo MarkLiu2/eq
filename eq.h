@@ -10,19 +10,16 @@ typedef struct pParams {
     gboolean PLAY;
     gboolean PAUSE;
 
-    float eq[EQ_MAX];
+    double eq[EQ_MAX]; //Hodnoty hejblatek v GUI - 0..1.0
 
     gchar *freq; //Audio frequency in samples per second
-    gchar *format; //Audio data format
     gchar *channels; //Number of channels: 1 mono, 2 stereo, 4 surround, 6 surround with center and lfe
-    gchar *silence; //Audio buffer silence value (calculated)
-    gchar *samples; //Audio buffer size in samples
-    gchar *size; //Audio buffer size in bytes (calculated)
-
 
 }TPlayer;
 
 TPlayer player;
 
 void play_wavfile (char* file, TPlayer *p);
+
+void get_wavparams (char* file, TPlayer *p);
 #endif

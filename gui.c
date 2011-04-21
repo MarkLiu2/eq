@@ -9,13 +9,25 @@
 #define RANGE_MAX   1.0
 #define RANGE_STEP  0.1
 
+
 GtkWidget *win;
 GtkWidget *label_file = NULL;
-
+GtkWidget *label_freq = NULL;
+GtkWidget *label_channels = NULL;
 gchar *filename;
 
 pthread_t playerThread;
 
+
+void load_fileinfo ()
+{
+    get_wavparams (filename, &player);
+
+
+    gtk_label_set_text (GTK_LABEL(label_file), g_path_get_basename(filename));
+    gtk_label_set_text (GTK_LABEL(label_freq), player.freq);
+    gtk_label_set_text (GTK_LABEL(label_channels), player.channels);
+}
 
 static void
 open_file ()
@@ -29,6 +41,7 @@ open_file ()
                                           GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
                                           GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT,
                                           NULL);
+
     fwav = gtk_file_filter_new();
     gtk_file_filter_set_name(fwav,"*.wav");
     gtk_file_filter_add_pattern(fwav,"*.wav");
@@ -45,21 +58,20 @@ open_file ()
 
         gchar *tmp = gtk_file_chooser_get_filename (GTK_FILE_CHOOSER (dialog));
 
-        const gchar* txt = g_strconcat("File: ", tmp, NULL);
-
 
         if(filename != NULL)
             g_free(filename);
 
         filename = g_strdup(tmp);
 
-        gtk_label_set_text (GTK_LABEL(label_file), txt);
 
         g_free (tmp);
 
         //Defaultni nastaveni prehravace - nic neprehrava
         player.PAUSE = FALSE;
         player.PLAY = FALSE;
+
+        load_fileinfo();
 
     }
     gtk_widget_destroy (dialog);
@@ -68,6 +80,7 @@ open_file ()
 
 void *play_thread (void *p)
 {
+
     play_wavfile (filename, p);
 
     pthread_exit (NULL);
@@ -76,10 +89,9 @@ void *play_thread (void *p)
 
 
 static void
-change_values ()
+change_values (GtkWidget *range, double *i)
 {
-
-   // player.eq[];
+    *i = gtk_range_get_value (GTK_RANGE(range));
 }
 
 
@@ -95,17 +107,28 @@ static void
 stop_click ()
 {
     player.PLAY = FALSE;
-
+    player.PAUSE = FALSE;
 }
 
 
 static void
 play_click ()
 {
+    if(player.PLAY && player.PAUSE)
+    {
+        pause_click ();
+        return;
+    }
+
+
+    if(player.PLAY)
+        return;
+
     if(filename != NULL)
     {
 
         player.PLAY = TRUE;
+        player.PAUSE = FALSE;
         pthread_create (&playerThread, NULL, play_thread, &player);
     }
     else
@@ -115,6 +138,7 @@ play_click ()
         {
 
             player.PLAY = TRUE;
+            player.PAUSE = FALSE;
             pthread_create (&playerThread, NULL, play_thread, &player);
         }
     }
@@ -127,12 +151,14 @@ int main (int argc, char *argv[])
 {
     GtkWidget *vbox = NULL;
     GtkWidget *hbox = NULL;
-    GtkWidget *vscale = NULL;
     GtkWidget *hsep = NULL;
+    GtkWidget *label = NULL;
+    GtkWidget *table = NULL;
+    GtkWidget *halign = NULL;
 
     GtkWidget *toolbar = NULL;
     GtkToolItem *open = NULL;
-    GtkToolItem *save = NULL;
+    //GtkToolItem *save = NULL;
     GtkToolItem *play = NULL;
     GtkToolItem *pause = NULL;
     GtkToolItem *stop = NULL;
@@ -152,12 +178,12 @@ int main (int argc, char *argv[])
     gtk_container_set_border_width (GTK_CONTAINER (win), 0);
     gtk_window_set_title (GTK_WINDOW (win), "Pásmový ekvalizátor");
     gtk_window_set_position (GTK_WINDOW (win), GTK_WIN_POS_CENTER);
-    gtk_window_set_default_size(GTK_WINDOW(win), 450, 200);
+    gtk_window_set_default_size(GTK_WINDOW(win), 450, 300);
     gtk_widget_realize (win);
     g_signal_connect (win, "destroy", gtk_main_quit, NULL);
 
     /* Create a vertical box with buttons */
-    vbox = gtk_vbox_new (FALSE, 0);
+    vbox = gtk_vbox_new (FALSE, 6);
     gtk_container_add (GTK_CONTAINER (win), vbox);
 
 
@@ -170,8 +196,8 @@ int main (int argc, char *argv[])
     open = gtk_tool_button_new_from_stock(GTK_STOCK_OPEN);
     gtk_toolbar_insert(GTK_TOOLBAR(toolbar), open, -1);
 
-    save = gtk_tool_button_new_from_stock(GTK_STOCK_SAVE_AS);
-    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), save, -1);
+//    save = gtk_tool_button_new_from_stock(GTK_STOCK_SAVE_AS);
+//    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), save, -1);
 
     sep = gtk_separator_tool_item_new();
     gtk_toolbar_insert(GTK_TOOLBAR(toolbar), sep, -1);
@@ -199,25 +225,78 @@ int main (int argc, char *argv[])
 
 
 
-    // Jen pro vizualiziaci - musi se potom napsat pekne :)
-
     for(int i = 0; i < EQ_MAX; i++)
     {
+        GtkWidget *vscale = NULL;
+
         vscale = gtk_vscale_new_with_range(RANGE_MIN, RANGE_MAX, RANGE_STEP);
         gtk_range_set_value  (GTK_RANGE(vscale), RANGE_MAX/2);
         gtk_range_set_inverted (GTK_RANGE(vscale), TRUE);
 
-        g_signal_connect (G_OBJECT (stop), "change-value", G_CALLBACK (change_values), NULL);
+        g_signal_connect (G_OBJECT (vscale), "value-changed", G_CALLBACK (change_values), &(player.eq[i]));
 
         gtk_box_pack_start(GTK_BOX(hbox), vscale, TRUE, TRUE, 2);
     }
 
 
     hsep = gtk_hseparator_new();
-    gtk_box_pack_start(GTK_BOX(vbox), hsep, FALSE, FALSE, 6);
+    gtk_box_pack_start(GTK_BOX(vbox), hsep, FALSE, FALSE, 2);
 
-    label_file = gtk_label_new ("File:");
-    gtk_box_pack_start(GTK_BOX(vbox), label_file, FALSE, FALSE, 6);
+    table = gtk_table_new (5, 2, FALSE);
+    gtk_box_pack_start(GTK_BOX(vbox), table, FALSE, FALSE, 2);
+
+    label = gtk_label_new (NULL);
+    gtk_label_set_markup (GTK_LABEL (label), "<span weight=\"bold\"><big>Basic file informations</big></span>");
+    gtk_table_attach(GTK_TABLE(table), label, 0, 2, 0, 1,  GTK_FILL  | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label = gtk_label_new ("Filename:");
+    gtk_container_add(GTK_CONTAINER(halign), label);
+    gtk_table_attach(GTK_TABLE(table), halign, 0, 1, 1, 2,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label_file = gtk_label_new ("-");
+    gtk_container_add(GTK_CONTAINER(halign), label_file);
+    gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 1, 2,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label = gtk_label_new ("Freqenncy:");
+    gtk_container_add(GTK_CONTAINER(halign), label);
+    gtk_table_attach(GTK_TABLE(table), halign, 0, 1, 2, 3,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label_freq = gtk_label_new ("-");
+    gtk_container_add(GTK_CONTAINER(halign), label_freq);
+    gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 2, 3,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+    halign = gtk_alignment_new(0, 0, 0, 1);
+
+
+    label = gtk_label_new ("Chanels:");
+    gtk_container_add(GTK_CONTAINER(halign), label);
+    gtk_table_attach(GTK_TABLE(table), halign, 0, 1, 3, 4,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label_channels = gtk_label_new ("-");
+    gtk_container_add(GTK_CONTAINER(halign), label_channels);
+    gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 3, 4,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+//    halign = gtk_alignment_new(0, 0, 0, 1);
+//    label = gtk_label_new ("Size:");
+//    gtk_container_add(GTK_CONTAINER(halign), label);
+//    gtk_table_attach(GTK_TABLE(table), halign, 0, 1, 4, 5,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+//
+//
+//    halign = gtk_alignment_new(0, 0, 0, 1);
+//    label_size = gtk_label_new ("-");
+//    gtk_container_add(GTK_CONTAINER(halign), label_size);
+//    gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 4, 5,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
 
 
     /* Enter the main loop */
