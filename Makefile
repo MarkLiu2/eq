@@ -2,7 +2,7 @@ PROJ=eq
 
 CC=gcc
 RM=rm -f
-CFLAGS=-O2 -pipe -pedantic-errors -Wall -Wextra -march=native -fomit-frame-pointer -std=c99
+CFLAGS=-O2 -pipe -pedantic-errors -Wall -Wextra -march=native -fomit-frame-pointer -std=gnu99
 GTK=`pkg-config gtk+-2.0 --cflags --libs`
 SDL=`sdl-config --cflags --libs`
 
