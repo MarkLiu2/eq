@@ -5,6 +5,8 @@
 
 #define EQ_MAX 8
 
+#define EQ_FREQUENCY_MAX 16000 //do jake frekvence resit ekvalizacni pasma
+
 typedef struct pParams {
 
     gboolean PLAY;

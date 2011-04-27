@@ -2,11 +2,11 @@ PROJ=eq
 
 CC=gcc
 RM=rm -f
-CFLAGS=-O2 -pipe -pedantic-errors -Wall -Wextra -march=native -fomit-frame-pointer -std=gnu99
+CFLAGS=-pipe -pedantic-errors -Wall -Wextra -march=native -fomit-frame-pointer -std=gnu99 -g
 GTK=`pkg-config gtk+-2.0 --cflags --libs`
 SDL=`sdl-config --cflags --libs`
 
-OBJS=eq.o
+OBJS=eq.o fft.o
 
 all: $(PROJ)
 
