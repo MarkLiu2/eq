@@ -72,7 +72,7 @@ void initFilters(int sampleRate){
 				//filterKoefs[i][j] *= (1.0-j/(float)(FILTER_KOEFS/2.0));
 				//filterKoefs[i][j] *= 0.0;
 			}
-			filterKoefs[i][j] *= 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0));
+			//filterKoefs[i][j] *= 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0));
 			//printf("sin[%d]: %g\n", j, 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0)));
 		}
 	}
