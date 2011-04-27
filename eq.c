@@ -1,369 +1,313 @@
 #include <stdlib.h>
-#include <stdio.h>
-#include <SDL.h>
-
+#include <gtk/gtk.h>
+#include <gdk/gdk.h>
 #include <pthread.h>
 
-#include "eq.h"
-#include "fft.h"
+#include "libeq.h"
 
-TPlayer *playerParams;
+#define RANGE_MIN   0.0
+#define RANGE_MAX   1.0
+#define RANGE_STEP  0.1
 
-struct sample
+
+GtkWidget *win;
+GtkWidget *label_file = NULL;
+GtkWidget *label_freq = NULL;
+GtkWidget *label_channels = NULL;
+gchar *filename;
+
+pthread_t playerThread;
+
+
+void load_fileinfo ()
 {
-    Uint8 *data;
-    Uint32 dpos;
-    Uint32 dlen;
-} sound;
+    get_wavparams (filename, &player);
 
-pthread_t filterThread;
-int filter_running = 0;
-typedef struct{
-	int start;
-	int len;
-	TPlayer *p;
-} filterParams;
-filterParams prm;
 
-#define FILTER_M 5 //2^5 = 32
-#define FILTER_KOEFS 32
-
-int filterStart = 0;
-
-float filterKoefs[EQ_MAX][FILTER_KOEFS];
-
-void initFilters(int sampleRate){
-	//zinicializujeme filtry
-	float koefs_x[FILTER_KOEFS*2];
-	float koefs_y[FILTER_KOEFS*2];
-	//printf("rate: %d\n", sampleRate);
-	for(int i=0; i<EQ_MAX; i++){
-		//naplnime si spektrum pozadovanyma hodnotama
-		float freqWindowSize = EQ_FREQUENCY_MAX/(float)(EQ_MAX+1.0);
-		float freqMin = freqWindowSize*i;
-		float freqMax = freqWindowSize*(i+1);
-		if(i == EQ_MAX-1){ //posledni pasmo, zrusime omezeni freqMax
-			freqMax = sampleRate+1.0; //pozuijeme vyssi nez vzorkovaci, tj. daleko nad rozsahem fft
-		}
-		//printf("min: %g, max: %g\n", freqMin, freqMax);
-		for(int j=0; j<FILTER_KOEFS*2; j++){ //cele to vynulujeme
-			koefs_x[j] = 0.0;
-			koefs_y[j] = 0.0;
-		}
-		for(int j=0; j<FILTER_KOEFS; j++){
-			//TODO: logaritmicke rozdeleni frekvenci
-			float freq = (sampleRate/2.0)*(j/(float)FILTER_KOEFS);
-			
-			if(freq > freqMin && freq <= freqMax){
-				koefs_x[j] = 1.0;
-				koefs_x[FILTER_KOEFS*2-(j+1)] = 1.0;
-			}
-		}
-		fft(FFT_REVERSE, FILTER_M+1, koefs_x, koefs_y);
-		float norm = koefs_x[0];
-		for(int j=0; j<FILTER_KOEFS*2; j++){
-			//printf("x[%d]: %g\n", j, koefs_x[j]);
-			koefs_x[j] /= norm; //znormalizujeme
-		}
-		//nahrajeme do filtru
-		for(int j=0; j<FILTER_KOEFS; j++){
-			filterKoefs[i][j] = koefs_x[j];
-			if(j > FILTER_KOEFS/2){
-				//filterKoefs[i][j] *= (1.0-j/(float)(FILTER_KOEFS/2.0));
-				//filterKoefs[i][j] *= 0.0;
-			}
-			//filterKoefs[i][j] *= 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0));
-			//printf("sin[%d]: %g\n", j, 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0)));
-		}
-	}
+    gtk_label_set_text (GTK_LABEL(label_file), g_path_get_basename(filename));
+    gtk_label_set_text (GTK_LABEL(label_freq), player.freq);
+    gtk_label_set_text (GTK_LABEL(label_channels), player.channels);
 }
 
-void get_wavparams (char* file, TPlayer *p)
+static void
+open_file ()
 {
-    if (SDL_Init(SDL_INIT_AUDIO))
+    GtkWidget *dialog;
+    GtkFileFilter * fwav, * fall;
+
+    dialog = gtk_file_chooser_dialog_new ("Open wav file...",
+                                          GTK_WINDOW (win),
+                                          GTK_FILE_CHOOSER_ACTION_OPEN,
+                                          GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+                                          GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT,
+                                          NULL);
+
+    fwav = gtk_file_filter_new();
+    gtk_file_filter_set_name(fwav,"*.wav");
+    gtk_file_filter_add_pattern(fwav,"*.wav");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog),fwav);
+
+    fall = gtk_file_filter_new();
+    gtk_file_filter_set_name(fall,"All");
+    gtk_file_filter_add_pattern(fall,"*");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog),fall);
+
+
+    if (gtk_dialog_run (GTK_DIALOG (dialog)) == GTK_RESPONSE_ACCEPT)
     {
-        fprintf(stderr, "%s\n", SDL_GetError());
-        exit(EXIT_FAILURE);
+
+        gchar *tmp = gtk_file_chooser_get_filename (GTK_FILE_CHOOSER (dialog));
+
+
+        if(filename != NULL)
+            g_free(filename);
+
+        filename = g_strdup(tmp);
+
+
+        g_free (tmp);
+
+        //Defaultni nastaveni prehravace - nic neprehrava
+        player.PAUSE = FALSE;
+        player.PLAY = FALSE;
+
+        load_fileinfo();
+
     }
-
-    SDL_AudioSpec wave;
-    Uint8 *data;
-    Uint32 dlen;
-
-    if (SDL_LoadWAV(file, &wave, &data, &dlen) == NULL )
-    {
-        fprintf(stderr, "%s\n", SDL_GetError());
-        SDL_Quit();
-        exit(EXIT_FAILURE);
-    }
-
-    if(p->freq != NULL)
-        g_free(p->freq);
-
-    if(p->channels != NULL)
-        g_free(p->channels);
-
-
-    p->freq = g_strdup_printf("%d", wave.freq);
-    switch(wave.channels) //1 mono, 2 stereo, 4 surround, 6 surround with center and lfe
-    {
-        case 1:
-            p->channels = g_strdup_printf("%d - mono", wave.channels);
-            break;
-
-        case 2:
-            p->channels = g_strdup_printf("%d - stereo", wave.channels);
-            break;
-
-        case 4:
-            p->channels = g_strdup_printf("%d - surround", wave.channels);
-            break;
-
-        case 6:
-            p->channels = g_strdup_printf("%d - surround with center and lfe", wave.channels);
-            break;
-
-        default:
-            p->channels = g_strdup_printf("%d - undefined", wave.channels);
-            break;
-    }
-
-    SDL_FreeWAV(data);
-
-    SDL_Quit();
+    gtk_widget_destroy (dialog);
 }
 
-void doFilter(TPlayer *p, int start, int len){
-	//projdeme filtry a aplikujeme
-	
-	start /= 2; //pracujeme se 2 byty
-	len /= 2;
-	printf("start: %d, am: %d, end: %d\n", start, len, start+len-1);
 
-	for(int x=0; x<len; x++){
-		float val = 0;
-		for(int i=0; i<EQ_MAX; i++){
-			float gain = p->eq[i];
-			float curval = 0.0; //vysledna hodnota aktualniho vzorku
-			//profiltrujeme
-			short cursample = 0;
-
-			for(int j=0; j<FILTER_KOEFS; j++){
-				int k = start+x-j;
-				cursample = ((short*)sound.data)[k];
-				if(k >= 0){ //abychom necetli nekde, kde nejsou data
-					curval += cursample*filterKoefs[i][j];
-				}
-			}
-			val += curval*gain;
-		}
-		val /= (float)EQ_MAX; //znormalizujeme
-		//printf("%*s\n", (Uint16)val, "#");
-		//printf("%*s\n", ((Uint16*)sound.data)[start+x]/(256*16), "#");
-		//int foo = ((short*)sound.data)[start+x];
-		//printf("%d\n", foo);
-		//printf("%d\n", (((Uint16*)sound.data)[start+x]-(0xFFFF/2)));
-		//((short*)sound.data)[start+x] = ((short*)sound.data)[start+x]*p->eq[0];
-		((short*)sound.data)[start+x] = val;
-	}
-	//if(len >= 1){
-	//	exit(1);
-	//}
-
-	/*
-	start /= 2; //pracujeme se 2 byty
-	len /= 2;
-	float koefs_x[FILTER_KOEFS*2];
-	float koefs_y[FILTER_KOEFS*2];
-	float koefs2_x[FILTER_KOEFS*2];
-	float koefs2_y[FILTER_KOEFS*2];
-	while(start+len > filterStart+FILTER_KOEFS){ //dokud cteme neco nefiltrovaneho
-		for(int j=0; j<FILTER_KOEFS; j++){
-
-		for(int j=0; j<FILTER_KOEFS*2; j++){ //cele to vynulujeme
-			koefs_x[j] = 0.0;
-			koefs_y[j] = 0.0;
-		}
-		for(int j=0; j<FILTER_KOEFS*2; j++){ //vlozime tam zvuk
-			koefs2_x[j] = 0.0;
-			koefs2_y[j] = 0.0;
-		}
-		//printf("rate: %d\n", sampleRate);
-		for(int i=0; i<EQ_MAX; i++){
-			//naplnime si spektrum pozadovanyma hodnotama
-			float freqWindowSize = EQ_FREQUENCY_MAX/(float)(EQ_MAX+1.0);
-			float freqMin = freqWindowSize*i;
-			float freqMax = freqWindowSize*(i+1);
-			if(i == EQ_MAX-1){ //posledni pasmo, zrusime omezeni freqMax
-				freqMax = sampleRate+1.0; //pozuijeme vyssi nez vzorkovaci, tj. daleko nad rozsahem fft
-			}
-			//printf("min: %g, max: %g\n", freqMin, freqMax);
-			for(int j=0; j<FILTER_KOEFS; j++){
-				//TODO: logaritmicke rozdeleni frekvenci
-				float freq = (sampleRate/2.0)*(j/(float)FILTER_KOEFS);
-
-				if(freq > freqMin && freq <= freqMax){
-					koefs_x[j] = p->eq[i];
-					koefs_x[FILTER_KOEFS*2-(j+1)] = p->eq[i];
-				}
-			}
-		}
-		fft(FFT_REVERSE, FILTER_M+1, koefs_x, koefs_y);
-		float norm = koefs_x[0];
-		for(int j=0; j<FILTER_KOEFS*2; j++){
-			//printf("x[%d]: %g\n", j, koefs_x[j]);
-			koefs_x[j] /= norm; //znormalizujeme
-		}
-		//nahrajeme do filtru
-		for(int j=0; j<FILTER_KOEFS; j++){
-			filterKoefs[i][j] = koefs_x[j];
-			if(j > FILTER_KOEFS/2){
-				//filterKoefs[i][j] *= (1.0-j/(float)(FILTER_KOEFS/2.0));
-				//filterKoefs[i][j] *= 0.0;
-			}
-			filterKoefs[i][j] *= 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0));
-			printf("sin[%d]: %g\n", j, 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0)));
-		}
-	}
-	*/
-}
-void * doFilter_thread(void *arg){
-	filterParams *prm = (filterParams*)arg;
-	doFilter(prm->p, prm->start, prm->len);
-	pthread_exit(NULL);
-	return NULL;
-}
-
-void play(void *udata, Uint8 *stream, int len)
+void *play_thread (void *p)
 {
-	if(filter_running == 1){
-		pthread_join(filterThread, NULL);
-	}
-    Uint32 amount = sound.dlen - sound.dpos;
-    if (amount > (unsigned int) len)
-    {
-        amount = len;
-    }
 
-	TPlayer *p = udata;
-	
-    SDL_MixAudio(stream, &sound.data[sound.dpos], amount, SDL_MIX_MAXVOLUME);
-    sound.dpos += amount;
+    play_wavfile (filename, p);
 
-    amount = sound.dlen - sound.dpos;
-    if (amount > (unsigned int) len)
-    {
-        amount = len;
-    }
-	
-	prm.start = sound.dpos;
-	prm.len = amount;
-	prm.p = p;
-	pthread_create(&filterThread, NULL, doFilter_thread, &prm);
-	filter_running = 1;
+    pthread_exit (NULL);
+    return NULL;
 }
 
-void play_wavfile(char* file, TPlayer *p)
+
+static void
+change_values (GtkWidget *range, double *i)
 {
-    if (!file)
+    *i = gtk_range_get_value (GTK_RANGE(range));
+}
+
+
+
+static void
+pause_click ()
+{
+    player.PAUSE = !player.PAUSE;
+}
+
+
+static void
+stop_click ()
+{
+    player.PLAY = FALSE;
+    player.PAUSE = FALSE;
+}
+
+
+static void
+play_click ()
+{
+    if(player.PLAY && player.PAUSE)
     {
+        pause_click ();
         return;
     }
 
-    playerParams = p;
 
-    if (SDL_Init(SDL_INIT_AUDIO))
+    if(player.PLAY)
+        return;
+
+    if(filename != NULL)
     {
-        fprintf(stderr, "%s\n", SDL_GetError());
-        exit(EXIT_FAILURE);
+
+        player.PLAY = TRUE;
+        player.PAUSE = FALSE;
+        pthread_create (&playerThread, NULL, play_thread, &player);
+    }
+    else
+    {
+        open_file();
+        if(filename != NULL)
+        {
+
+            player.PLAY = TRUE;
+            player.PAUSE = FALSE;
+            pthread_create (&playerThread, NULL, play_thread, &player);
+        }
     }
 
-    SDL_AudioSpec desired;
-    desired.freq = 44100;
-    desired.format = AUDIO_S16SYS;
-    desired.channels = 1;
-    desired.samples = 512;
-    desired.callback = play;
-	desired.userdata = p;
+}
 
-    if (SDL_OpenAudio(&desired, NULL))
+
+
+int main (int argc, char *argv[])
+{
+    GtkWidget *vbox = NULL;
+    GtkWidget *hbox = NULL;
+    GtkWidget *hsep = NULL;
+    GtkWidget *label = NULL;
+    GtkWidget *table = NULL;
+    GtkWidget *halign = NULL;
+
+    GtkWidget *toolbar = NULL;
+    GtkToolItem *open = NULL;
+    //GtkToolItem *save = NULL;
+    GtkToolItem *play = NULL;
+    GtkToolItem *pause = NULL;
+    GtkToolItem *stop = NULL;
+    GtkToolItem *sep = NULL;
+
+    /* Threads init */
+    g_thread_init (NULL);
+    gdk_threads_init ();
+
+    /* Initialize GTK+ */
+    g_log_set_handler ("Gtk", G_LOG_LEVEL_WARNING, (GLogFunc) gtk_false, NULL);
+    gtk_init (&argc, &argv);
+    g_log_set_handler ("Gtk", G_LOG_LEVEL_WARNING, g_log_default_handler, NULL);
+
+    /* Create the main window */
+    win = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+    gtk_container_set_border_width (GTK_CONTAINER (win), 0);
+    gtk_window_set_title (GTK_WINDOW (win), "Pásmový ekvalizátor");
+    gtk_window_set_position (GTK_WINDOW (win), GTK_WIN_POS_CENTER);
+    gtk_window_set_default_size(GTK_WINDOW(win), 450, 300);
+    gtk_widget_realize (win);
+    g_signal_connect (win, "destroy", gtk_main_quit, NULL);
+
+    /* Create a vertical box with buttons */
+    vbox = gtk_vbox_new (FALSE, 6);
+    gtk_container_add (GTK_CONTAINER (win), vbox);
+
+
+    /* Toolbbar menu */
+    toolbar = gtk_toolbar_new();
+    gtk_toolbar_set_style(GTK_TOOLBAR(toolbar), GTK_TOOLBAR_BOTH);
+
+    gtk_container_set_border_width(GTK_CONTAINER(toolbar), 2);
+
+    open = gtk_tool_button_new_from_stock(GTK_STOCK_OPEN);
+    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), open, -1);
+
+//    save = gtk_tool_button_new_from_stock(GTK_STOCK_SAVE_AS);
+//    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), save, -1);
+
+    sep = gtk_separator_tool_item_new();
+    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), sep, -1);
+
+    play = gtk_tool_button_new_from_stock(GTK_STOCK_MEDIA_PLAY);
+    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), play, -1);
+
+    pause = gtk_tool_button_new_from_stock(GTK_STOCK_MEDIA_PAUSE);
+    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), pause, -1);
+
+    stop = gtk_tool_button_new_from_stock(GTK_STOCK_MEDIA_STOP);
+    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), stop, -1);
+
+    gtk_box_pack_start(GTK_BOX(vbox), toolbar, FALSE, FALSE, 0);
+
+
+    g_signal_connect (G_OBJECT (open), "clicked", G_CALLBACK (open_file), NULL);
+    g_signal_connect (G_OBJECT (play), "clicked", G_CALLBACK (play_click), NULL);
+    g_signal_connect (G_OBJECT (pause), "clicked", G_CALLBACK (pause_click), NULL);
+    g_signal_connect (G_OBJECT (stop), "clicked", G_CALLBACK (stop_click), NULL);
+
+
+    hbox = gtk_hbox_new (FALSE, 6);
+    gtk_box_pack_start(GTK_BOX(vbox), hbox, TRUE, TRUE, 6);
+
+
+
+    for(int i = 0; i < EQ_MAX; i++)
     {
-        fprintf(stderr, "%s\n", SDL_GetError());
-        SDL_Quit();
-        exit(EXIT_FAILURE);
+        GtkWidget *vscale = NULL;
+
+        vscale = gtk_vscale_new_with_range(RANGE_MIN, RANGE_MAX, RANGE_STEP);
+        gtk_range_set_value  (GTK_RANGE(vscale), RANGE_MAX/2);
+        gtk_range_set_inverted (GTK_RANGE(vscale), TRUE);
+
+        g_signal_connect (G_OBJECT (vscale), "value-changed", G_CALLBACK (change_values), &(player.eq[i]));
+
+        gtk_box_pack_start(GTK_BOX(hbox), vscale, TRUE, TRUE, 2);
     }
 
-    SDL_PauseAudio(0);
-    SDL_AudioSpec wave;
-    Uint8 *data;
-    Uint32 dlen;
 
-    if (SDL_LoadWAV(file, &wave, &data, &dlen) == NULL )
-    {
-        fprintf(stderr, "%s\n", SDL_GetError());
-        SDL_CloseAudio();
-        SDL_Quit();
-        exit(EXIT_FAILURE);
-    }
+    hsep = gtk_hseparator_new();
+    gtk_box_pack_start(GTK_BOX(vbox), hsep, FALSE, FALSE, 2);
 
-	initFilters(wave.freq); //zinicializujeme audio filtry
+    table = gtk_table_new (5, 2, FALSE);
+    gtk_box_pack_start(GTK_BOX(vbox), table, FALSE, FALSE, 2);
 
-    SDL_AudioCVT cvt;
-    if (SDL_BuildAudioCVT(&cvt, wave.format, wave.channels, wave.freq, desired.format, desired.channels, desired.freq) < 0)
-    {
-        fprintf(stderr, "%s\n", SDL_GetError());
-        SDL_CloseAudio();
-        SDL_Quit();
-        exit(EXIT_FAILURE);
-    }
-
-    cvt.buf = malloc(dlen * cvt.len_mult);
-    memcpy(cvt.buf, data, dlen);
-    cvt.len = dlen;
-
-    if (SDL_ConvertAudio(&cvt))
-    {
-        fprintf(stderr, "%s\n", SDL_GetError());
-        SDL_FreeWAV(data);
-        SDL_CloseAudio();
-        SDL_Quit();
-        exit(EXIT_FAILURE);
-    }
-
-    SDL_FreeWAV(data);
-
-    if (sound.data)
-    {
-        free(sound.data);
-    }
-
-    SDL_LockAudio();
-    sound.data = cvt.buf;
-    sound.dlen = cvt.len_cvt;
-    sound.dpos = 0;
-    SDL_UnlockAudio();
-
-    while (sound.dpos < sound.dlen)
-    {
-        SDL_Delay(100);
-
-        //Somebody press STOP button
-        if(!playerParams->PLAY)
-            break;
+    label = gtk_label_new (NULL);
+    gtk_label_set_markup (GTK_LABEL (label), "<span weight=\"bold\"><big>Basic file informations</big></span>");
+    gtk_table_attach(GTK_TABLE(table), label, 0, 2, 0, 1,  GTK_FILL  | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 6, 2);
 
 
-        //Somebody press PAUSE button
-        if(playerParams->PAUSE)
-            SDL_PauseAudio(1);
-        else
-            SDL_PauseAudio(0);
-    }
+
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label = gtk_label_new ("Filename:");
+    gtk_container_add(GTK_CONTAINER(halign), label);
+    gtk_table_attach(GTK_TABLE(table), halign, 0, 1, 1, 2,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
 
 
-    //Neprehravam takze FALSE
-    p->PLAY = FALSE;
-    p->PAUSE = FALSE;
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label_file = gtk_label_new ("-");
+    gtk_container_add(GTK_CONTAINER(halign), label_file);
+    gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 1, 2,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
 
-    SDL_CloseAudio();
-    SDL_Quit();
+
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label = gtk_label_new ("Freqenncy:");
+    gtk_container_add(GTK_CONTAINER(halign), label);
+    gtk_table_attach(GTK_TABLE(table), halign, 0, 1, 2, 3,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label_freq = gtk_label_new ("-");
+    gtk_container_add(GTK_CONTAINER(halign), label_freq);
+    gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 2, 3,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+    halign = gtk_alignment_new(0, 0, 0, 1);
+
+
+    label = gtk_label_new ("Chanels:");
+    gtk_container_add(GTK_CONTAINER(halign), label);
+    gtk_table_attach(GTK_TABLE(table), halign, 0, 1, 3, 4,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+    halign = gtk_alignment_new(0, 0, 0, 1);
+    label_channels = gtk_label_new ("-");
+    gtk_container_add(GTK_CONTAINER(halign), label_channels);
+    gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 3, 4,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+//    halign = gtk_alignment_new(0, 0, 0, 1);
+//    label = gtk_label_new ("Size:");
+//    gtk_container_add(GTK_CONTAINER(halign), label);
+//    gtk_table_attach(GTK_TABLE(table), halign, 0, 1, 4, 5,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+//
+//
+//    halign = gtk_alignment_new(0, 0, 0, 1);
+//    label_size = gtk_label_new ("-");
+//    gtk_container_add(GTK_CONTAINER(halign), label_size);
+//    gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 4, 5,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
+
+
+    /* Enter the main loop */
+    gtk_widget_show_all (win);
+
+
+    gdk_threads_enter ();
+
+    gtk_main ();
+
+    gdk_threads_leave ();
+
+    return 0;
 }
