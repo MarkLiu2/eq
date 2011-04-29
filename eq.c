@@ -234,6 +234,8 @@ int main (int argc, char *argv[])
         gtk_range_set_value  (GTK_RANGE(vscale), RANGE_MAX/2);
         gtk_range_set_inverted (GTK_RANGE(vscale), TRUE);
 
+        player.eq[i] = RANGE_MAX/2; //inicializace eq
+
         g_signal_connect (G_OBJECT (vscale), "value-changed", G_CALLBACK (change_values), &(player.eq[i]));
 
         gtk_box_pack_start(GTK_BOX(hbox), vscale, TRUE, TRUE, 2);
