@@ -15,6 +15,7 @@ struct sample
     Uint32 dpos;
     Uint32 dlen;
 } sound;
+Uint8* sound_copy;
 
 pthread_t filterThread;
 int filter_running = 0;
@@ -24,59 +25,12 @@ typedef struct{
 	TPlayer *p;
 } filterParams;
 filterParams prm;
+Uint32 snd_freq;
 
-#define FILTER_M 5 //2^5 = 32
-#define FILTER_KOEFS 32
+#define FILTER_M 7 //2^7=128 
+#define FILTER_KOEFS 128
 
 int filterStart = 0;
-
-float filterKoefs[EQ_MAX][FILTER_KOEFS];
-
-void initFilters(int sampleRate){
-	//zinicializujeme filtry
-	float koefs_x[FILTER_KOEFS*2];
-	float koefs_y[FILTER_KOEFS*2];
-	//printf("rate: %d\n", sampleRate);
-	for(int i=0; i<EQ_MAX; i++){
-		//naplnime si spektrum pozadovanyma hodnotama
-		float freqWindowSize = EQ_FREQUENCY_MAX/(float)(EQ_MAX+1.0);
-		float freqMin = freqWindowSize*i;
-		float freqMax = freqWindowSize*(i+1);
-		if(i == EQ_MAX-1){ //posledni pasmo, zrusime omezeni freqMax
-			freqMax = sampleRate+1.0; //pozuijeme vyssi nez vzorkovaci, tj. daleko nad rozsahem fft
-		}
-		//printf("min: %g, max: %g\n", freqMin, freqMax);
-		for(int j=0; j<FILTER_KOEFS*2; j++){ //cele to vynulujeme
-			koefs_x[j] = 0.0;
-			koefs_y[j] = 0.0;
-		}
-		for(int j=0; j<FILTER_KOEFS; j++){
-			//TODO: logaritmicke rozdeleni frekvenci
-			float freq = (sampleRate/2.0)*(j/(float)FILTER_KOEFS);
-			
-			if(freq > freqMin && freq <= freqMax){
-				koefs_x[j] = 1.0;
-				koefs_x[FILTER_KOEFS*2-(j+1)] = 1.0;
-			}
-		}
-		fft(FFT_REVERSE, FILTER_M+1, koefs_x, koefs_y);
-		float norm = koefs_x[0];
-		for(int j=0; j<FILTER_KOEFS*2; j++){
-			//printf("x[%d]: %g\n", j, koefs_x[j]);
-			koefs_x[j] /= norm; //znormalizujeme
-		}
-		//nahrajeme do filtru
-		for(int j=0; j<FILTER_KOEFS; j++){
-			filterKoefs[i][j] = koefs_x[j];
-			if(j > FILTER_KOEFS/2){
-				//filterKoefs[i][j] *= (1.0-j/(float)(FILTER_KOEFS/2.0));
-				//filterKoefs[i][j] *= 0.0;
-			}
-			//filterKoefs[i][j] *= 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0));
-			//printf("sin[%d]: %g\n", j, 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0)));
-		}
-	}
-}
 
 void get_wavparams (char* file, TPlayer *p)
 {
@@ -133,105 +87,66 @@ void get_wavparams (char* file, TPlayer *p)
     SDL_Quit();
 }
 
-void doFilter(TPlayer *p, int start, int len){
-	//projdeme filtry a aplikujeme
-	
-	start /= 2; //pracujeme se 2 byty
-	len /= 2;
-	printf("start: %d, am: %d, end: %d\n", start, len, start+len-1);
-
-	for(int x=0; x<len; x++){
-		float val = 0;
-		for(int i=0; i<EQ_MAX; i++){
-			float gain = p->eq[i];
-			float curval = 0.0; //vysledna hodnota aktualniho vzorku
-			//profiltrujeme
-			short cursample = 0;
-
-			for(int j=0; j<FILTER_KOEFS; j++){
-				int k = start+x-j;
-				cursample = ((short*)sound.data)[k];
-				if(k >= 0){ //abychom necetli nekde, kde nejsou data
-					curval += cursample*filterKoefs[i][j];
-				}
-			}
-			val += curval*gain;
-		}
-		val /= (float)EQ_MAX; //znormalizujeme
-		//printf("%*s\n", (Uint16)val, "#");
-		//printf("%*s\n", ((Uint16*)sound.data)[start+x]/(256*16), "#");
-		//int foo = ((short*)sound.data)[start+x];
-		//printf("%d\n", foo);
-		//printf("%d\n", (((Uint16*)sound.data)[start+x]-(0xFFFF/2)));
-		//((short*)sound.data)[start+x] = ((short*)sound.data)[start+x]*p->eq[0];
-		((short*)sound.data)[start+x] = val;
-	}
-	//if(len >= 1){
-	//	exit(1);
-	//}
-
-	/*
+void doEqualise(TPlayer *p, int start, int len){
 	start /= 2; //pracujeme se 2 byty
 	len /= 2;
 	float koefs_x[FILTER_KOEFS*2];
 	float koefs_y[FILTER_KOEFS*2];
-	float koefs2_x[FILTER_KOEFS*2];
-	float koefs2_y[FILTER_KOEFS*2];
-	while(start+len > filterStart+FILTER_KOEFS){ //dokud cteme neco nefiltrovaneho
-		for(int j=0; j<FILTER_KOEFS; j++){
+	int fs = filterStart;
 
-		for(int j=0; j<FILTER_KOEFS*2; j++){ //cele to vynulujeme
-			koefs_x[j] = 0.0;
-			koefs_y[j] = 0.0;
-		}
-		for(int j=0; j<FILTER_KOEFS*2; j++){ //vlozime tam zvuk
-			koefs2_x[j] = 0.0;
-			koefs2_y[j] = 0.0;
-		}
-		//printf("rate: %d\n", sampleRate);
-		for(int i=0; i<EQ_MAX; i++){
-			//naplnime si spektrum pozadovanyma hodnotama
-			float freqWindowSize = EQ_FREQUENCY_MAX/(float)(EQ_MAX+1.0);
-			float freqMin = freqWindowSize*i;
-			float freqMax = freqWindowSize*(i+1);
-			if(i == EQ_MAX-1){ //posledni pasmo, zrusime omezeni freqMax
-				freqMax = sampleRate+1.0; //pozuijeme vyssi nez vzorkovaci, tj. daleko nad rozsahem fft
+	//projedeme cast, kteoru budeme filtrovat
+	if(len > 0){
+		while(filterStart < start+len){ //dokud cteme neco nefiltrovaneho
+			for(int j=0; j<FILTER_KOEFS*2; j++){ //cele to vynulujeme
+				koefs_x[j] = 0.0;
+				koefs_y[j] = 0.0;
 			}
-			//printf("min: %g, max: %g\n", freqMin, freqMax);
-			for(int j=0; j<FILTER_KOEFS; j++){
-				//TODO: logaritmicke rozdeleni frekvenci
-				float freq = (sampleRate/2.0)*(j/(float)FILTER_KOEFS);
+			int sndval = 0;
+			for(int j=0; j<FILTER_KOEFS*2; j++){ //vlozime tam zvuk
+				if(filterStart+j < sound.dlen){ //pokud jsme jeste ve zvuku
+					sndval = ((short*)sound_copy)[filterStart+j];
+				}else{
+					sndval = 0.0;
+				}
+				koefs_x[j] = sndval;
+			}
 
-				if(freq > freqMin && freq <= freqMax){
-					koefs_x[j] = p->eq[i];
-					koefs_x[FILTER_KOEFS*2-(j+1)] = p->eq[i];
+			fft(FFT_FORWARD, FILTER_M+1, koefs_x, koefs_y); //provedeme FFT
+			for(int i=0; i<EQ_MAX; i++){
+				//naplnime si spektrum pozadovanyma hodnotama
+				float mel_Max = 2595*log10(1+(EQ_FREQUENCY_MAX/700.0)); //pouzivame MEL scale
+				float melWindowSize = mel_Max/(float)(EQ_MAX+1.0);
+				float melMin = melWindowSize*i;
+				float melMax = melWindowSize*(i+1);
+				if(i == EQ_MAX-1){ //posledni pasmo, zrusime omezeni melMax
+					melMax = INT_MAX;
+				}
+				if(i == 0){
+					melMin = -1;
+				}
+				for(int j=0; j<FILTER_KOEFS; j++){
+					float freq = (snd_freq/2.0)*(j/(float)FILTER_KOEFS);
+					float mel = 2595*log10(1+(freq/700.0)); //pouzivame MEL scale
+
+					if(mel > melMin && mel <= melMax){ //vynasobime prislusnou hodnotou ekvalizeru (z gui)
+						koefs_x[j] *= p->eq[i]; 
+						koefs_y[j] *= p->eq[i];
+						koefs_x[FILTER_KOEFS*2-(j+1)] *= p->eq[i];
+						koefs_y[FILTER_KOEFS*2-(j+1)] *= p->eq[i];
+					}
 				}
 			}
-		}
-		fft(FFT_REVERSE, FILTER_M+1, koefs_x, koefs_y);
-		float norm = koefs_x[0];
-		for(int j=0; j<FILTER_KOEFS*2; j++){
-			//printf("x[%d]: %g\n", j, koefs_x[j]);
-			koefs_x[j] /= norm; //znormalizujeme
-		}
-		//nahrajeme do filtru
-		for(int j=0; j<FILTER_KOEFS; j++){
-			filterKoefs[i][j] = koefs_x[j];
-			if(j > FILTER_KOEFS/2){
-				//filterKoefs[i][j] *= (1.0-j/(float)(FILTER_KOEFS/2.0));
-				//filterKoefs[i][j] *= 0.0;
+			fft(FFT_REVERSE, FILTER_M+1, koefs_x, koefs_y); //provedeme zpetnou FFT
+
+			for(int j=0; j<FILTER_KOEFS*2; j++){ //vlozime tam zvuk
+				if(filterStart+j < sound.dlen){ //pokud jsme jeste ve zvuku
+					koefs_x[j] *= 0.5*(1-cos((2.0*M_PI*j)/(FILTER_KOEFS*2.0-1.0))); //aplikujeme hannovo okno
+					((short*)sound.data)[filterStart+j] += koefs_x[j];
+				}
 			}
-			filterKoefs[i][j] *= 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0));
-			printf("sin[%d]: %g\n", j, 1.0-sin(M_PI*j/(FILTER_KOEFS*2.0)));
+			filterStart += FILTER_KOEFS;
 		}
 	}
-	*/
-}
-void * doFilter_thread(void *arg){
-	filterParams *prm = (filterParams*)arg;
-	doFilter(prm->p, prm->start, prm->len);
-	pthread_exit(NULL);
-	return NULL;
 }
 
 void play(void *udata, Uint8 *stream, int len)
@@ -246,21 +161,10 @@ void play(void *udata, Uint8 *stream, int len)
     }
 
 	TPlayer *p = udata;
+	doEqualise(p, sound.dpos, amount);
 	
     SDL_MixAudio(stream, &sound.data[sound.dpos], amount, SDL_MIX_MAXVOLUME);
     sound.dpos += amount;
-
-    amount = sound.dlen - sound.dpos;
-    if (amount > (unsigned int) len)
-    {
-        amount = len;
-    }
-	
-	prm.start = sound.dpos;
-	prm.len = amount;
-	prm.p = p;
-	pthread_create(&filterThread, NULL, doFilter_thread, &prm);
-	filter_running = 1;
 }
 
 void play_wavfile(char* file, TPlayer *p)
@@ -306,7 +210,7 @@ void play_wavfile(char* file, TPlayer *p)
         exit(EXIT_FAILURE);
     }
 
-	initFilters(wave.freq); //zinicializujeme audio filtry
+	snd_freq = wave.freq;
 
     SDL_AudioCVT cvt;
     if (SDL_BuildAudioCVT(&cvt, wave.format, wave.channels, wave.freq, desired.format, desired.channels, desired.freq) < 0)
@@ -319,6 +223,7 @@ void play_wavfile(char* file, TPlayer *p)
 
     cvt.buf = malloc(dlen * cvt.len_mult);
     memcpy(cvt.buf, data, dlen);
+	sound_copy = malloc(dlen*cvt.len_mult);
     cvt.len = dlen;
 
     if (SDL_ConvertAudio(&cvt))
@@ -329,6 +234,8 @@ void play_wavfile(char* file, TPlayer *p)
         SDL_Quit();
         exit(EXIT_FAILURE);
     }
+	memcpy(sound_copy, cvt.buf, dlen*cvt.len_mult); //zkopirujeme
+	memset(cvt.buf, 0, dlen*cvt.len_mult); //wnastavime na nuly, do nej to pak dopocitavame za behu
 
     SDL_FreeWAV(data);
 
@@ -341,6 +248,7 @@ void play_wavfile(char* file, TPlayer *p)
     sound.data = cvt.buf;
     sound.dlen = cvt.len_cvt;
     sound.dpos = 0;
+	filterStart = 0;
     SDL_UnlockAudio();
 
     while (sound.dpos < sound.dlen)
@@ -365,5 +273,6 @@ void play_wavfile(char* file, TPlayer *p)
     p->PAUSE = FALSE;
 
     SDL_CloseAudio();
+	free(sound_copy);
     SDL_Quit();
 }
