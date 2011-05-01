@@ -30,7 +30,9 @@ Po spuštění programu `./eq` se zobrazí hlavní okno. Aby bylo možné vyzkou
 Zhodnocení výsledků
 -------------------
 Ovlivnění pásem je v podstatě stoprocentní, neboť se pracuje přímo s frekvenčním spektrem signálu. Oproti použití FIR filtrů, se kterými jsme taktéž experimentovali, je dosaženo znatelně lepších výsledků, neboť FIR filtry neměly obdélníkovou frekvenční charakteristiku. Co se výkonnosti týče, je toto řešení o něco výpočetně náročnější, nícméně vzhledem ke složitosti FFT je stále použitelné.
+Testování kvality filtru probíhalo subjektivně poslechem, neboť ekvalizér je využíván hlavně pro vylepšení dojmu z přehrávané hudby.
 
 Použitá literatura
 ------------------
 * [GTK+ 3 Reference Manual](http://developer.gnome.org/gtk3/stable/)
+* [Materiály k předmětu ISS](https://www.fit.vutbr.cz/study/courses/ISS/public/)
