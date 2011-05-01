@@ -3,4 +3,5 @@
 eq
 *.zip
 *.wav
+!ukazky/*.wav
 *.htm*
