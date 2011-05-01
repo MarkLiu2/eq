@@ -102,7 +102,7 @@ void doEqualise(TPlayer *p, unsigned int start, int len){
 			}
 			int sndval = 0;
 			for(int j=0; j<FILTER_KOEFS*2; j++){ //vlozime tam zvuk
-				if(filterStart+j < sound.dlen){ //pokud jsme jeste ve zvuku
+				if(filterStart+j < sound.dlen/2){ //pokud jsme jeste ve zvuku
 					sndval = ((short*)sound_copy)[filterStart+j];
 				}else{
 					sndval = 0.0;
@@ -138,7 +138,7 @@ void doEqualise(TPlayer *p, unsigned int start, int len){
 			fft(FFT_REVERSE, FILTER_M+1, koefs_x, koefs_y); //provedeme zpetnou FFT
 
 			for(int j=0; j<FILTER_KOEFS*2; j++){ //vlozime tam zvuk
-				if(filterStart+j < sound.dlen){ //pokud jsme jeste ve zvuku
+				if(filterStart+j < sound.dlen/2){ //pokud jsme jeste ve zvuku
 					koefs_x[j] *= 0.5*(1-cos((2.0*M_PI*j)/(FILTER_KOEFS*2.0-1.0))); //aplikujeme hannovo okno
 					((short*)sound.data)[filterStart+j] += koefs_x[j];
 				}
