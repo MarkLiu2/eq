@@ -24,4 +24,6 @@ TPlayer player;
 void play_wavfile (char* file, TPlayer *p);
 
 void get_wavparams (char* file, TPlayer *p);
+
+int getMinFrequency(int band); //vrati spodni hranicni frekvenci pro pasmo band, coz odpovida indexu posuvniku v GUI
 #endif

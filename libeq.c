@@ -87,6 +87,18 @@ void get_wavparams (char* file, TPlayer *p)
     SDL_Quit();
 }
 
+int getMinFrequency(int band){
+	int i = band;
+	float mel_Max = 2595*log10(1+(EQ_FREQUENCY_MAX/700.0)); //pouzivame MEL scale
+	float melWindowSize = mel_Max/(float)(EQ_MAX+1.0);
+	float melMin = melWindowSize*i;
+	if(i == 0){
+		melMin = 0;
+	}
+	float freq = 700*(pow(10.0, melMin/2595.0)-1.0);
+	return freq;
+}
+
 void doEqualise(TPlayer *p, unsigned int start, int len){
 	start /= 2; //pracujeme se 2 byty
 	len /= 2;
