@@ -197,8 +197,6 @@ int main (int argc, char *argv[])
     open = gtk_tool_button_new_from_stock(GTK_STOCK_OPEN);
     gtk_toolbar_insert(GTK_TOOLBAR(toolbar), open, -1);
 
-//    save = gtk_tool_button_new_from_stock(GTK_STOCK_SAVE_AS);
-//    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), save, -1);
 
     sep = gtk_separator_tool_item_new();
     gtk_toolbar_insert(GTK_TOOLBAR(toolbar), sep, -1);
@@ -295,18 +293,6 @@ int main (int argc, char *argv[])
     label_channels = gtk_label_new ("-");
     gtk_container_add(GTK_CONTAINER(halign), label_channels);
     gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 3, 4,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
-
-
-//    halign = gtk_alignment_new(0, 0, 0, 1);
-//    label = gtk_label_new ("Size:");
-//    gtk_container_add(GTK_CONTAINER(halign), label);
-//    gtk_table_attach(GTK_TABLE(table), halign, 0, 1, 4, 5,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
-//
-//
-//    halign = gtk_alignment_new(0, 0, 0, 1);
-//    label_size = gtk_label_new ("-");
-//    gtk_container_add(GTK_CONTAINER(halign), label_size);
-//    gtk_table_attach(GTK_TABLE(table), halign, 1, 2, 4, 5,  GTK_FILL , GTK_FILL | GTK_EXPAND, 6, 2);
 
 
     /* Enter the main loop */
