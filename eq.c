@@ -178,7 +178,7 @@ int main (int argc, char *argv[])
     gtk_container_set_border_width (GTK_CONTAINER (win), 0);
     gtk_window_set_title (GTK_WINDOW (win), "Pásmový ekvalizátor");
     gtk_window_set_position (GTK_WINDOW (win), GTK_WIN_POS_CENTER);
-    gtk_window_set_default_size(GTK_WINDOW(win), 450, 300);
+    gtk_window_set_default_size(GTK_WINDOW(win), 450, 350);
     gtk_window_set_icon(GTK_WINDOW(win), gdk_pixbuf_new_from_file("pgb-chip-mmedia.svg", NULL));	//http://www.openclipart.org/detail/101425
     gtk_widget_realize (win);
     g_signal_connect (win, "destroy", gtk_main_quit, NULL);
@@ -229,6 +229,7 @@ int main (int argc, char *argv[])
     for(int i = 0; i < EQ_MAX; i++)
     {
         GtkWidget *vscale = NULL;
+        GtkWidget *vbox_slider = gtk_vbox_new(FALSE,2);
 
         vscale = gtk_vscale_new_with_range(RANGE_MIN, RANGE_MAX, RANGE_STEP);
         gtk_range_set_value  (GTK_RANGE(vscale), RANGE_MAX/2);
@@ -238,7 +239,13 @@ int main (int argc, char *argv[])
 
         g_signal_connect (G_OBJECT (vscale), "value-changed", G_CALLBACK (change_values), &(player.eq[i]));
 
-        gtk_box_pack_start(GTK_BOX(hbox), vscale, TRUE, TRUE, 2);
+        gtk_box_pack_start(GTK_BOX(vbox_slider), vscale, TRUE, TRUE, 2);
+
+        gchar *tmp = g_strdup_printf("%d [Hz]", getMinFrequency(i));
+        GtkWidget *label = gtk_label_new (tmp);
+        gtk_box_pack_start(GTK_BOX(vbox_slider), label, FALSE, FALSE, 2);
+
+        gtk_box_pack_start(GTK_BOX(hbox), vbox_slider, TRUE, TRUE, 2);
     }
 
 
