@@ -30,7 +30,7 @@ Uint32 snd_freq;
 #define FILTER_M 7 //2^7=128 
 #define FILTER_KOEFS 128
 
-int filterStart = 0;
+unsigned int filterStart = 0;
 
 void get_wavparams (char* file, TPlayer *p)
 {
@@ -87,12 +87,11 @@ void get_wavparams (char* file, TPlayer *p)
     SDL_Quit();
 }
 
-void doEqualise(TPlayer *p, int start, int len){
+void doEqualise(TPlayer *p, unsigned int start, int len){
 	start /= 2; //pracujeme se 2 byty
 	len /= 2;
 	float koefs_x[FILTER_KOEFS*2];
 	float koefs_y[FILTER_KOEFS*2];
-	int fs = filterStart;
 
 	//projedeme cast, kteoru budeme filtrovat
 	if(len > 0){
