@@ -17,7 +17,11 @@ Datum vypracování
 
 Popis řešení projektu
 ---------------------
-TODO
+TODO - GUI
+
+Samotné ovlivnění frekvenčních pásem je realizováno pomocí FFT - signál je převeden na spektrum, příslušné rozsahu jsou vynásobeny hodnotou získanou z posuvníku a pomocí inverzní FFT je získán upravený zvuk. Ve frekvenčním spektru mají tedy jednotlivé posuvníky vliv na obdálníkové okno. Pro spojení zvuků po inverzní Fourierově transformaci je využíváno Hannovo okno, posunuje se tedy pouze o polovinu počtu vzorků, než na kolik je aplikována FFT.
+
+Hraniční hodnoty frekvencí odpovídajícím posuvníku jsou počítány pomocí Mel scale, tedy tak, aby odpovídaly lidskému vnímání významu frekvencí.
 
 Popis obsluhy programu
 ----------------------
@@ -25,7 +29,7 @@ TODO
 
 Zhodnocení výsledků
 -------------------
-TODO
+Ovlivnění pásem je v podstatě stoprocentní, neboť se pracuje přímo s frekvenčním spektrem signálu. Oproti použití FIR filtrů, se kterými jsme taktéž experimentovali, je dosaženo znatelně lepších výsledků, neboť FIR filtry neměly obdélníkovou frekvenční charakteristiku. Co se výkonnosti týče, je toto řešení o něco výpočetně náročnější, nícméně vzhledem ke složitosti FFT je stále použitelné.
 
 Použitá literatura
 ------------------
