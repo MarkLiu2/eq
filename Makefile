@@ -1,4 +1,4 @@
-CFLAGS=-O2 -pipe -pedantic-errors -Wall -Wextra -march=native -fomit-frame-pointer -std=gnu99 `pkg-config gtk+-2.0 --cflags` `sdl-config --cflags`
+CFLAGS=-O2 -pipe -pedantic-errors -Wall -Wextra -march=native -fomit-frame-pointer -std=gnu99 `pkg-config gtk+-2.0 --cflags` `sdl-config --cflags` -g
 LDFLAGS=`sdl-config --libs` `pkg-config gtk+-2.0 --libs`
 
 all: eq
@@ -14,4 +14,4 @@ doc:
 	echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pásmový ekvalizátor</title></head><body>' > README.html && markdown README.md >> README.html && echo '</body></html>' >> README.html
 
 pack: doc
-	zip -9 xlogin00.zip *.c *.h Makefile README.html pgb-chip-mmedia.svg
+	zip -9 xlogin00.zip *.c *.h Makefile README.html pgb-chip-mmedia.svg ukazky/*.wav
